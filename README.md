@@ -563,14 +563,283 @@ Now we have to configure the plugins
 
 ![Plugin-setup](images/Maven.png)
 
+### Step 12 Configure the Backend Application to use RDS database
 
-### Step 12 Configure and run the Jenkins Pipeline
+To configure your Spring Boot application to use Amazon RDS, you need to set the datasource properties in application.properties and add the necessary dependencies.
 
-### Step 13 Set Up Agrocd to watch our Application-code repository for updates
+- In your application.properties file, configure the datasource properties using environment variables to avoid hardcoding sensitive information.
 
-### Step 14 Configure the Backend Application to use RDS database
+![Application-Property](images/Application-Property.png)
 
-### Step 15 Setup Kustomise to deploy to different environments
+- Add the MySQL connector dependency to the pom.xml file:
 
-### Step 16 Set Up Monitoring for our Infrastructure and Application (Prometheus and Grafana)
+```
+        <dependency>
+    		<groupId>mysql</groupId>
+   			<artifactId>mysql-connector-java</artifactId>
+  			<version>8.0.33</version>
+        </dependency>
+ ```
+
+Now it's time to Build test and deploy our frontend Application and the Backend into our kubernetes cluster. before we build the jenkins pipeline, let's set up the frontend, backend and other manifest file in the deployment repository argocd will be watching. 
+
+### Step 13 Setting Up Applications Manifest files.
+
+Create the necessary Kubernetes manifest files for both the frontend and backend applications.
+
+- For the Frontend application, create deployment.yaml service.yaml and ingress.yaml as seen below.
+
+![frontend-deployment-file](images/frontend-deployment-file.png)
+
+![frontend-ingress-file](images/frontend-ingress.png)
+
+![frontend-service-file](images/frontend-service.png)
+
+- For the Backend application, create deployment.yaml service.yaml ingress.yaml and secret.yaml
+
+![frontend-deployment-file](images/backend-deployment-file.png)
+
+![backend-ingress](images/backend-ingress.png)
+
+![backend-secret](images/backend-secret.png)
+
+- The database credentials has been encoded using Base64, as seen below.
+
+![Base64-encode](images/encode.png)
+
+![backend-service](images/backend-service-file.png)
+
+### Step 14 Configure and run the Jenkins Pipeline
+
+We are going to use jenkins pipeline to automate the build, test, and deployment of our applications.
+
+***The Frontend Pipeline**
+
+- From the jenkins Console create a new pipeline.
+
+![Create-pipeline-frontend](images/create-frontend-pipeline.png)
+
+- Update the pipeline script with your specific configuration.
+
+![pipeline-frontend](images/pipeline-script.png)
+
+- Click "Apply" and "Save".
+
+- Run the pipeline by clicking "Build Now".
+
+![pipeline-frontend](images/pipeline-successful.png)
+
+_as seen from the image above the pipeline is successful_ 
+
+The repository where the deployment file resides will be updated with the latest image.
+
+![pipeline-frontend](images/frontend-deployment-update.png)
+
+***The backend Pipeline**
+
+- From the jenkins Console create a new pipeline
+
+![Create-pipeline-backend](images/create-backend-pipeline.png)
+
+- Update the pipeline script with your specific configuration.
+
+- Click "Apply" and "Save".
+
+- Run the pipeline by clicking "Build Now".
+
+![pipeline-frontend](images/pipeline-successful.png)
+
+_as seen from the image above the pipeline is successful_ 
+
+The repository where the deployment file resides will be updated with the latest image..
+
+![pipeline-backend](images/backend-application-argocd.png)
+
+### Step 15 Set Up Agrocd to watch our Application-code repository for updates
+
+- Log in to the argocd 
+
+- Click on "Settings".
+
+- Select "Repositories".
+
+- Click on "Connect Repo". Choose the connection method "VIA HTTPS".
+
+- Fill in the repository URL and use your Git token as the password.
+
+- Click "Connect".
+
+Go back to Application and click on create APPLICATION
+
+- Create an Application for the frontend.
+
+![frontend-application-argocd](images/frontend-application-agrocd.png)
+
+- Create an Application for the backend.
+
+![backend-application-argocd](images/backend-application-argocd.png)
+
+- Argo CD will deploy the applications into the cluster.
+
+![application-argocd](images/argocd-applications.png)
+
+Access the Applications from Your Browser:
+
+![Frontend](images/frontend.png)
+
+![Backend](images/backend.png)
+
+
+### Step 17 Set Up Monitoring for our Infrastructure(Prometheus and Grafana)
+
+Now we will set up Prometheus to monitor the  Cluster and also Grafana for data visualization.
+
+
+**Install Prometheus**
+
+- Add the Prometheus chart repository:
+
+```
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+```
+
+- Search for the kube-prometheus-stack and install the latest version:
+
+```
+helm search repo prometheus-community
+```
+
+The kube prometheus stack will install prometheus, node exporter, grafana and alert manager
+
+- Show and save the values file:
+
+```
+helm show values prometheus-community/kube-prometheus-stack --version 58.7.2 > prom-value.yaml
+```
+
+- Confirm that Prometheus, Grafana, and Alert Manager are set to true in prom-values.yaml.
+
+- Proceed to install kube prometheus stack
+
+```
+helm install prometheus prometheus-community/kube-prometheus-stack -n monitoring --create-namespace -f prom-value.yaml
+```
+
+- Verify that all resources are running: 
+
+```
+k get all -n monitoring
+```
+
+![Prometheus-kube-stack](images/Prometheus-kube-stack.png)
+
+
+- Update the ingress-resource.yaml file with ingress rules for Prometheus and Grafana.
+
+```
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grafana-ingress
+  namespace: monitoring
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: grafana.michaelajala.top
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: prometheus-grafana
+                port:
+                  number: 80
+
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: prometheus-ingress
+  namespace: monitoring
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: prometheus.michaelajala.top
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: prometheus-kube-prometheus-prometheus
+                port:
+                  number: 9090
+```
+
+
+- Access the UI for prometheus and grafana 
+
+![Prometheus-UIk](images/Prometheus-UI.png)
+
+- Log in to the Grafana to view the cluster metrics
+
+![Grafana-UI](images/Grafana-UI.png)
+
+![Welcome-Grafana](images/Welcome-Grafana.png)
+
+![List-of-DashboardsGrafana-UI](imageS/dashboards-grafana.png)
+
+![Cluster-Metric](images/Cluster.png)
+
+
+With this setup, you can monitor your cluster and various other metrics as needed.
+
+### Bonus Point Step 18 - Set Up Horizontal Pod Autoscaler (HPA) and Cluster Autoscaler
+
+To ensure our architecture can automatically scale based on demand, we need to set up the Horizontal Pod Autoscaler (HPA) and Cluster Autoscaler in our Kubernetes cluster.
+
+***Set Up Horizontal Pod Autoscaler (HPA) for Frontend and Backend***
+
+The HPA automatically scales the number of pods in a replication controller, deployment, or replica set based on observed CPU utilization or other select metrics.
+
+- Install Metrics Server:
+
+```
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+```
+The Metrics Server collects resource metrics from Kubelets and provides them via the Metrics API.
+
+We already included resource requests and limits in our application deployment file, so we can proceed to create HPA 
+
+- Create HPA for frontend
+
+![Frontend-HPA](images/Frontend-HPA.png)
+
+- Create HPA for backend
+
+![Backend-HPA](images/Backend-HPA.png)
+
+- Verfy the deployment of HPA
+
+```
+kubectl get hpa -n your-namespace
+```
+
+**Set Up Cluster Autoscaler***
+
+The Cluster Autoscaler automatically adjusts the size of the Kubernetes cluster when there are pods that fail to run due to insufficient resources or when nodes are underutilized and their pods can be placed elsewhere. We wont be setting this up as it is beyond the scope of this project.
+
+**PROJECT COMPLETED**
+
+Project Completion
+
+Destroy all resources:
+
+- Comment out terraform destroy in your GitHub workflows.
+
+- Push changes to your GitHub repository to trigger the workflow.
+
+- Verify in your AWS console that all resources have been destroyed.
 
